@@ -100,6 +100,37 @@ SHEET_COLUMNS = [
     "Result",
 ]
 
+COLUMN_GUIDE = {
+    "Website": "The homepage that was checked.",
+    "Domain": "The bare domain. Duplicates are dropped, so one row equals one site.",
+    "Authority (proxy)": (
+        "Only filled when you supply an Open PageRank key. It is a **0–10 page-rank "
+        "proxy** — not Moz DA and not Ahrefs DR — so it is labelled as a proxy. Blank "
+        "means no key was given."
+    ),
+    "Niche": "The niche you typed, carried on every row so one sheet can hold several campaigns.",
+    "Contact Email": (
+        "The first address found on the homepage, the guest-post page or a contact page. "
+        "Template addresses and image filenames are stripped out, and an editorial inbox "
+        "is preferred over a personal one. **Blank means the site publishes no plain "
+        "address** — many hide behind a form, and this demo will not invent one."
+    ),
+    "Guest-post signal": (
+        "The page that proves the site takes contributions, for example `/write-for-us`. "
+        "`none found` means it does not publish one."
+    ),
+    "Latest post (RSS)": "Newest date in the site's RSS/Atom feed — a quick check that the site is alive.",
+    "Reachable": "The homepage HTTP status.",
+    "Relevance": "With the AI step on: the model's 0–100 fit score, judged only from the cells to its left.",
+    "Reason for fit": "With the AI step on: one or two sentences on why this site is worth contacting.",
+    "Outreach subject": "With the AI step on: the draft subject line for this specific site. Never sent.",
+    "Outreach body": "With the AI step on: the draft email for this specific site. Never sent.",
+    "Outreach Status": "Starts as `New`. The column exists so a follow-up run can move it to Sent, Replied or Won.",
+    "Date Added": "The day the site was qualified.",
+    "Last touch": "When this prospect was last contacted. Filled by the follow-up step, not this one.",
+    "Result": "What came back — a link, a no, silence. Filled as outreach progresses.",
+}
+
 
 # --------------------------------------------------------------------------- fetch
 
@@ -333,42 +364,189 @@ def qualify_all(domains: list[str], niche: str, opr_key: str | None) -> list[dic
     return rows
 
 
-def main() -> None:
-    st.set_page_config(page_title="Backlink prospect qualifier", page_icon="🔗", layout="wide")
+def render_intro() -> None:
     st.title("Backlink prospect qualifier")
-    st.caption(
-        "Live demo. Fetches real sites, extracts public qualification signals, and "
-        "drafts outreach. No prospect data is invented."
+    st.markdown(
+        "This is the **qualification step** of a backlink prospecting workflow. Hand it a "
+        "niche and a list of candidate sites; it visits each one for real and returns the "
+        "public signals that decide whether the site is worth an outreach email."
     )
 
-    key = llm_key()
+    with st.expander("How to use this demo — three steps", expanded=True):
+        st.markdown(
+            "**1. In the sidebar, type your niche.** It is written onto every row, so one "
+            "sheet can hold several campaigns.\n\n"
+            "**2. Paste your candidate domains**, one per line. A demo list is already "
+            "filled in — replace it, or leave it to watch the filter accept some sites and "
+            "reject others.\n\n"
+            "**3. Press Qualify prospects.** The run takes a few seconds per site because "
+            "it is really fetching them."
+        )
+        st.markdown(
+            "You get a table you can download as a CSV and open straight in Google Sheets "
+            "or Excel. **Nothing is sent to anyone** — every outreach email is a draft."
+        )
 
+    with st.expander("What it checks, and how it decides"):
+        st.markdown(
+            "Every cell is either something the site publishes, or it is left blank. "
+            "Nothing is guessed.\n\n"
+            "| Signal | How it is found |\n"
+            "| --- | --- |\n"
+            "| Guest-post page | Probes `/write-for-us`, `/guest-post`, `/contribute`, "
+            "`/submit-guest-post`, `/advertise` and stops at the first real page. If none "
+            "exists, it checks whether the homepage mentions contribution. |\n"
+            "| Contact email | Extracted from the homepage, the guest-post page and "
+            "`/contact`, `/about-us`. Template addresses and image filenames are filtered "
+            "out, and an editorial inbox beats a personal one. |\n"
+            "| Publication recency | The newest `pubDate` in the site's RSS or Atom feed — "
+            "much more reliable than scraping dates out of HTML. |\n"
+            "| Reachability | The homepage HTTP status. |\n"
+            "| Authority | Optional. Open PageRank's 0–10 page-rank proxy, labelled as a "
+            "proxy and never as \"DA\". |\n"
+            "| Fit verdict and outreach draft | Optional, via the Gemini API. It is told to "
+            "judge only from the cells above and to invent nothing. |"
+        )
+        st.markdown(
+            "A site that fails the guest-post check is not a bad site — it is just not a "
+            "guest-posting prospect. **The rejects stay visible on purpose**, so you can "
+            "see the filter doing work rather than passing everything."
+        )
+
+
+def render_sidebar() -> tuple[str, str, str, bool, bool]:
     with st.sidebar:
-        st.header("Inputs")
-        niche = st.text_input("Niche", value="personal finance")
+        st.header("Run the demo")
+
+        st.markdown("**Step 1 — your niche**")
+        niche = st.text_input(
+            "Niche",
+            value="personal finance",
+            help="The topic you want backlinks in. It lands on every row and it is what the AI step judges relevance against.",
+        )
+
+        st.markdown("**Step 2 — candidate sites**")
         raw = st.text_area(
             "Candidate domains — one per line",
             value="\n".join(DEMO_SEEDS),
             height=170,
+            help="Paste domain names or full URLs. https:// and www. are optional; duplicates are dropped.",
         )
-        opr_key = st.text_input("Open PageRank key (optional)", type="password")
-        use_ai = st.checkbox("AI fit verdict + outreach draft", value=bool(key))
+        st.caption("The list above is a demo set. Five of the seven publish a guest-post page and two do not.")
+
+        st.markdown("**Step 3 — press the button**")
         run = st.button("Qualify prospects", type="primary", width="stretch")
 
         st.divider()
-        st.caption(
-            "**Authority column:** Open PageRank returns a 0–10 page-rank proxy. "
-            "It is **not** Moz DA or Ahrefs DR, and this demo will not label it as "
-            "DA. Plug your own Ahrefs/Semrush/Moz key in for the real metric."
+        st.markdown("**Optional**")
+        use_ai = st.checkbox(
+            "AI fit verdict + outreach draft",
+            value=bool(llm_key()),
+            help="Adds a relevance score, a reason for fit, and a draft email per site. Needs a Gemini key.",
         )
-        st.caption(f"AI: {'Gemini key found' if key else 'no GEMINI_API_KEY set'}")
+        opr_key = st.text_input(
+            "Open PageRank key (optional)",
+            type="password",
+            help="Free key from openpagerank.com. Fills the authority column with a 0–10 page-rank proxy.",
+        )
+
+        st.divider()
+        st.caption(
+            "**About the authority column:** Open PageRank returns a 0–10 page-rank "
+            "proxy. It is **not** Moz DA and **not** Ahrefs DR, so this demo labels it as "
+            "a proxy rather than pretending otherwise. Supply your own "
+            "Ahrefs/Semrush/Moz access for the real metric."
+        )
+        st.caption(f"AI step: {'shown' if use_ai else 'off'}")
+        st.caption("Outreach drafts are drafts. Nothing here sends email.")
+
+    return niche, raw, opr_key, use_ai, run
+
+
+def render_results(niche: str) -> None:
+    rows = st.session_state.get("rows")
+    if not rows:
+        st.info(
+            "Nothing to show yet. Set your niche, list some domains, and press "
+            "**Qualify prospects** in the sidebar."
+        )
+        return
+
+    qualified = [r for r in rows if r["Guest-post signal"] != "none found"]
+    with_contact = [r for r in qualified if r["Contact Email"]]
+
+    st.subheader(
+        f"{len(qualified)} of {len(rows)} show a guest-post signal · "
+        f"{len(with_contact)} of those expose a contact email"
+    )
+
+    left, middle, right = st.columns(3)
+    left.metric("Sites checked", len(rows))
+    middle.metric(
+        "Qualified",
+        len(qualified),
+        help="Publishes a guest-post page, or mentions contribution on the homepage.",
+    )
+    right.metric(
+        "With a contact email",
+        len(with_contact),
+        help="A blank address usually means the site uses a contact form instead.",
+    )
+
+    st.dataframe(
+        [{c: r[c] for c in SHEET_COLUMNS if c != "Outreach body"} for r in rows],
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        "Scroll the table sideways for the tracking columns. `Outreach Status`, "
+        "`Last touch` and `Result` are there so the follow-up automation has somewhere "
+        "to write."
+    )
+
+    st.download_button(
+        "Download Sheet-ready CSV",
+        data=to_csv(rows),
+        file_name=f"backlink-prospects-{niche.replace(' ', '-')}.csv",
+        mime="text/csv",
+        help="Opens directly in Google Sheets or Excel — the columns are already the ones the brief asked for.",
+    )
+
+    with st.expander("What each column means"):
+        for column in SHEET_COLUMNS:
+            st.markdown(f"**{column}** — {COLUMN_GUIDE[column]}")
+
+    if any(r["Outreach subject"] for r in rows):
+        st.subheader("Drafted outreach — read, edit, send yourself")
+        st.caption(
+            "One draft per site, written from that site's own signals. Nothing is sent "
+            "automatically, and no site is contacted more than once."
+        )
+        for row in rows:
+            if not row["Outreach subject"]:
+                continue
+            with st.expander(f"{row['Domain']} — relevance {row['Relevance']}"):
+                st.markdown(f"**Why this site is a fit:** {row['Reason for fit']}")
+                st.markdown(f"**Subject:** {row['Outreach subject']}")
+                st.text(row["Outreach body"])
+
+
+def main() -> None:
+    st.set_page_config(page_title="Backlink prospect qualifier", page_icon="🔗", layout="wide")
+
+    render_intro()
+    niche, raw, opr_key, use_ai, run = render_sidebar()
+    key = llm_key()
 
     if run:
         domains = parse_domains(raw)
         if not domains:
-            st.warning("Add at least one domain.")
+            st.warning("Add at least one domain to the box in the sidebar.")
         elif use_ai and not key:
-            st.error("AI is ticked but no GEMINI_API_KEY is set — untick it or add the key.")
+            st.error(
+                "The AI step is ticked but no `GEMINI_API_KEY` is set. Untick it, or add "
+                "the key to `.streamlit/secrets.toml`."
+            )
         else:
             rows = qualify_all(domains, niche, opr_key or None)
             if use_ai and key:
@@ -379,39 +557,7 @@ def main() -> None:
                 ai_bar.empty()
             st.session_state["rows"] = rows
 
-    rows = st.session_state.get("rows")
-    if not rows:
-        st.info("Pick a niche, list some domains, and press **Qualify prospects**.")
-        return
-
-    qualified = [r for r in rows if r["Guest-post signal"] != "none found"]
-    with_contact = [r for r in qualified if r["Contact Email"]]
-    st.subheader(
-        f"{len(qualified)} of {len(rows)} show a guest-post signal · "
-        f"{len(with_contact)} of those expose a contact email"
-    )
-
-    st.dataframe(
-        [{c: r[c] for c in SHEET_COLUMNS if c != "Outreach body"} for r in rows],
-        width="stretch",
-        hide_index=True,
-    )
-    st.download_button(
-        "Download Sheet-ready CSV",
-        data=to_csv(rows),
-        file_name=f"backlink-prospects-{niche.replace(' ', '-')}.csv",
-        mime="text/csv",
-    )
-
-    if any(r["Outreach subject"] for r in rows):
-        st.subheader("Drafted outreach — approve before anything sends")
-        for row in rows:
-            if not row["Outreach subject"]:
-                continue
-            with st.expander(f"{row['Domain']} — relevance {row['Relevance']}"):
-                st.markdown(f"**Why this site:** {row['Reason for fit']}")
-                st.markdown(f"**Subject:** {row['Outreach subject']}")
-                st.text(row["Outreach body"])
+    render_results(niche)
 
 
 if __name__ == "__main__":

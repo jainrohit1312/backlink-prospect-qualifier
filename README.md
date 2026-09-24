@@ -21,6 +21,25 @@ it is left blank.
   rather than as "DA"
 - **Fit verdict and outreach draft** — optional, via the Gemini API
 
+## What you see when you open it
+
+The app explains itself, so it can be handed to someone who has never seen it before:
+
+1. A **How to use this demo** panel giving the three steps — type a niche, paste the
+   domains, press **Qualify prospects**.
+2. A **What it checks** panel listing the rules above in plain language.
+3. After a run, a summary line plus three counters: sites checked, qualified, and how many
+   of those expose a contact email.
+4. The results table, and directly beneath it a **What each column means** panel covering
+   all sixteen columns — including the `Outreach Status`, `Last touch` and `Result`
+   tracking columns that the follow-up step writes into.
+5. A **Download Sheet-ready CSV** button, and the drafted outreach — one expander per
+   site, each showing why that site was picked.
+
+Nothing in the app contacts anyone. Every outreach email stays a draft, and a site that
+fails the guest-post check stays visible in the table on purpose, so the filter can be
+seen rejecting something rather than passing everything.
+
 ## Run
 
 ```bash
