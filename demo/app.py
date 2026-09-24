@@ -457,7 +457,10 @@ def render_sidebar() -> tuple[str, str, str, bool, bool]:
             "a proxy rather than pretending otherwise. Supply your own "
             "Ahrefs/Semrush/Moz access for the real metric."
         )
-        st.caption(f"AI step: {'shown' if use_ai else 'off'}")
+        st.caption(
+            f"AI step: {'on' if use_ai else 'off'} · "
+            f"{'Gemini key detected' if llm_key() else 'no GEMINI_API_KEY set'}"
+        )
         st.caption("Outreach drafts are drafts. Nothing here sends email.")
 
     return niche, raw, opr_key, use_ai, run

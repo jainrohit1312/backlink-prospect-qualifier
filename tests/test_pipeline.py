@@ -98,6 +98,27 @@ check("no exception while qualifying live sites", not at.exception, str(at.excep
 subheaders = [s.value for s in at.subheader]
 check("summary rendered", any("of 2" in s for s in subheaders), str(subheaders))
 
+metrics = getattr(at, "metric", [])
+print(f"metrics: {[m.label for m in metrics]}")
+check("summary counters rendered", len(metrics) >= 3, f"{len(metrics)} counters")
+
+panel_labels = [e.label for e in at.expander]
+check(
+    "how-to panel explains the steps",
+    any("How to use this demo" in label for label in panel_labels),
+    str(panel_labels),
+)
+check(
+    "rules panel explains the signals",
+    any("What it checks" in label for label in panel_labels),
+    str(panel_labels),
+)
+check(
+    "column glossary is shown to the reader",
+    any("What each column means" in label for label in panel_labels),
+    str(panel_labels),
+)
+
 frames = getattr(at, "dataframe", [])
 check("result table rendered", len(frames) >= 1)
 check(
